@@ -1,2 +1,3 @@
 # Ignore pycache stuff
 __pycache__/
+BARC/Category200k(100k).csv
