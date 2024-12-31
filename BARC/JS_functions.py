@@ -120,6 +120,46 @@ def flatten(lst):
 
 ### ConceptARC
 
+# Visualize tasks
+def plot_arc_concepts_data(train_data, set: str = None, label: str = None) -> None:
+    """
+    Plots input-output pairs from the 'train' data in horizontal layout.
+    """
+    cmap = ListedColormap([
+        '#000000', '#0074D9', '#FF4136', '#2ECC40', '#FFDC00',
+        '#AAAAAA', '#F012BE', '#FF851B', '#7FDBFF', '#870C25'
+    ])
+    args = {'cmap': cmap, 'vmin': 0, 'vmax': 10}
+    
+    # Number of examples
+    n_examples = len(train_data)
+    fig_width = n_examples * 3  # Scale for horizontal spacing
+    fig_height = 3
+    
+    # Create a figure with 2 rows (input-output) and n_examples columns
+    fig, axes = plt.subplots(2, n_examples, figsize=(fig_width, fig_height))
+    
+    # Ensure axes is always a 2D array
+    if n_examples == 1:
+        axes = axes[:, np.newaxis]
+    
+    for col, example in enumerate(train_data):
+        input_grid = np.array(example['input'])
+        output_grid = np.array(example['output'])
+        
+        # Plot input
+        axes[0, col].imshow(input_grid, **args)
+        axes[0, col].axis('off')
+        
+        # Plot output
+        axes[1, col].imshow(output_grid, **args)
+        axes[1, col].axis('off')
+    
+    fig.suptitle(f"Perceptions: {label}, set: {set}")
+    plt.tight_layout()
+    plt.show()
+
+# Create Folders
 def concept_arc(directory_path):
     problems = []
 
