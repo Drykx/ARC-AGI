@@ -83,7 +83,8 @@ def shrink_model_embeddings(model, keep_indices, mapping):
         model.resize_token_embeddings(len(keep_indices))
         model.get_input_embeddings().weight.data[:] = new_embed_t
         model.get_output_embeddings().weight.data[:] = new_lm_head
-        for config in [model.config, model.generation_config]:
+        
+        for config in [model.config]:
             for k, v in list(config.to_dict().items()):
                 if k.endswith('token_id'):
                     setattr(config, k, [mapping.get(t) for t in v] if isinstance(v, list) else mapping.get(v))
@@ -95,15 +96,86 @@ def shrink_embeddings(model, tokenizer, corpus=None, keep_token_ids=[], keep_tok
     keep_indices.update({k: None for k in keep_token_ids})
     keep_indices.update({tokenizer.vocab[t]: None for t in keep_tokens})
     if corpus is not None: keep_indices.update({k: None for k in tokenizer(corpus)['input_ids']})
+
+    # Add important model tokens
     if keep_model_tokens:
-        for config in [model.config, model.generation_config]:
-            for k, v in config.to_dict().items():
-                if k.endswith('token_id'):
-                    keep_indices.update({k: None for k in (v if isinstance(v, list) else [v])})
+        keep_indices.update(important_tokens(tokenizer))
+
+    # Add tokens from the model configuration
+    if keep_model_tokens and hasattr(model, "config"):
+        for k, v in model.config.to_dict().items():
+            if k.endswith('token_id'):
+                keep_indices.update({k: None for k in (v if isinstance(v, list) else [v])})
+
+    # Remove unnecessary tokens
     keep_indices.pop(None, None)
+    for idx in remove_token_ids:
+        keep_indices.pop(idx, None)
+
     for idx in remove_token_ids: keep_indices.pop(idx, None)
     mapping, keep_indices = shrink_tokenizer_vocab(tokenizer, keep_indices, keep_special_tokens, keep_token_order)
     shrink_model_embeddings(model, keep_indices, mapping=mapping)
+    return mapping
+
+
+def important_tokens(tokenizer):
+    from collections import OrderedDict  # use as OrderedSet
+    # Create an OrderedDict to store indices to keep
+    keep_indices = OrderedDict()
+
+    # Add base tokens (BOS, EOS, PAD) with meaningful labels
+    base_tokens = {
+        "bos_token_id": tokenizer.bos_token_id,  # Beginning of Sequence
+        "eos_token_id": tokenizer.eos_token_id,  # End of Sequence
+        "pad_token_id": tokenizer.pad_token_id,  # Padding Token
+    }
+    for name, token_id in base_tokens.items():
+        if token_id is not None:
+            keep_indices[token_id] = name
+
+    # Add additional special tokens
+    if tokenizer.additional_special_tokens_ids:
+        for idx, token_id in enumerate(tokenizer.additional_special_tokens_ids, start=1):
+            if token_id is not None:
+                keep_indices[token_id] = f"special_token_{idx}"
+
+    return keep_indices
+
+def shrink_embeddings(model, tokenizer, corpus=None, keep_token_ids=[], keep_tokens=[], remove_token_ids=[], keep_model_tokens=True, keep_special_tokens=True, keep_normalizer=False, keep_token_order=True):
+    if not keep_normalizer:
+        remove_tokenizer_normalizer(tokenizer)
+
+    from collections import OrderedDict  # use as OrderedSet
+    # Use OrderedDict for keep_indices
+    keep_indices = OrderedDict()
+
+    # Add manually specified token IDs and tokens
+    keep_indices.update({k: None for k in keep_token_ids})
+    keep_indices.update({tokenizer.vocab[t]: None for t in keep_tokens})
+
+    # Add tokens from the corpus
+    if corpus is not None:
+        keep_indices.update({k: None for k in tokenizer(corpus)['input_ids']})
+
+    # Add important model tokens
+    if keep_model_tokens:
+        keep_indices.update(important_tokens(tokenizer))
+
+    # Add tokens from the model configuration
+    if keep_model_tokens and hasattr(model, "config"):
+        for k, v in model.config.to_dict().items():
+            if k.endswith('token_id'):
+                keep_indices.update({k: None for k in (v if isinstance(v, list) else [v])})
+
+    # Remove unnecessary tokens
+    keep_indices.pop(None, None)
+    for idx in remove_token_ids:
+        keep_indices.pop(idx, None)
+
+    # Shrink tokenizer vocabulary and model embeddings
+    mapping, keep_indices = shrink_tokenizer_vocab(tokenizer, keep_indices, keep_special_tokens, keep_token_order)
+    shrink_model_embeddings(model, keep_indices, mapping=mapping)
+
     return mapping
 
 def fix_dtypes(model, fix_weights=True, fix_quant_states=True):
